@@ -1,0 +1,9 @@
+# Node
+node_modules/
+
+# Wrangler
+.wrangler/
+
+# clasp
+.clasp.json
+.clasp-dev.json
