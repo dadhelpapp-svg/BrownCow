@@ -1,0 +1,11 @@
+name = "browncow-payroll-bot"
+main = "src/index.js"
+compatibility_date = "2026-03-01"
+
+[vars]
+ALLOWED_CHAT_IDS = "-5173650582"
+SHEETS_INGEST_URL = "REPLACE_WITH_APPS_SCRIPT_EXEC_URL"
+
+# Secrets (set via `wrangler secret put` per environment):
+# - TELEGRAM_BOT_TOKEN
+# - TELEGRAM_SECRET
