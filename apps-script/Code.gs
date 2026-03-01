@@ -1,10 +1,10 @@
 /**
  * BrownCow Payroll Bot - Google Apps Script Web App
  *
- * Implements: normalized_attendance generation (complete IN/OUT pairs only).
+ * Reads attendance from `attendanceSheetUrl` (expects tab `Att.log report`).
+ * Writes staging tab `normalized_attendance` into `outputSpreadsheetId`.
  *
- * NOTE: This version ONLY generates the normalized table in-place in the attendance spreadsheet
- * for testing, or in a newly created spreadsheet if you wire the copy-from-template step.
+ * normalized_attendance contains ONLY complete IN/OUT pairs.
  */
 
 function doPost(e) {
@@ -12,26 +12,25 @@ function doPost(e) {
     var body = JSON.parse((e.postData && e.postData.contents) ? e.postData.contents : "{}");
 
     var attendanceSheetUrl = body.attendanceSheetUrl;
-    var templateId = body.payrollTemplateSpreadsheetId;
+    var outputSpreadsheetId = body.outputSpreadsheetId;
 
-    if (!attendanceSheetUrl || !templateId) {
-      return _json({ ok: false, error: "missing attendanceSheetUrl or payrollTemplateSpreadsheetId" });
+    if (!attendanceSheetUrl || !outputSpreadsheetId) {
+      return _json({ ok: false, error: "missing attendanceSheetUrl or outputSpreadsheetId" });
     }
 
     var attId = _spreadsheetIdFromUrl(attendanceSheetUrl);
     var attSs = SpreadsheetApp.openById(attId);
     var attSheet = attSs.getSheetByName('Att.log report');
-    if (!attSheet) throw new Error("Att.log report tab not found");
+    if (!attSheet) throw new Error("Att.log report tab not found in attendance spreadsheet");
 
     var values = attSheet.getDataRange().getDisplayValues();
-
     var parsed = _parseAttLogReport(values);
 
-    // For now: write staging tab into the attendance spreadsheet to validate output.
-    // In the final workflow, you'll write this into the newly created payroll spreadsheet.
+    var outSs = SpreadsheetApp.openById(String(outputSpreadsheetId));
+
     var stageName = 'normalized_attendance';
-    var stage = attSs.getSheetByName(stageName);
-    if (!stage) stage = attSs.insertSheet(stageName);
+    var stage = outSs.getSheetByName(stageName);
+    if (!stage) stage = outSs.insertSheet(stageName);
     stage.clearContents();
 
     var header = [["date","employee","time_in","time_out","hours"]];
@@ -43,11 +42,13 @@ function doPost(e) {
 
     return _json({
       ok: true,
-      message: 'normalized_attendance written (test mode: written into attendance file)',
+      message: 'normalized_attendance written to output spreadsheet',
       attendanceSpreadsheetId: attId,
+      outputSpreadsheetId: String(outputSpreadsheetId),
       normalizedRows: parsed.rows.length,
       period: parsed.period
     });
+
   } catch (err) {
     return _json({ ok: false, error: String(err && err.stack ? err.stack : err) });
   }
@@ -70,13 +71,13 @@ function _parseAttLogReport(values) {
   var colByDay = dayHeader.colByDay;
   var days = dayHeader.days; // e.g., [11..26]
 
-  // employee blocks
   var employees = _extractEmployees(values);
 
   var outRows = [];
 
   employees.forEach(function(emp) {
     var events = [];
+
     days.forEach(function(dn) {
       var col = colByDay[dn];
       var cell = (col != null && col < emp.punchRow.length) ? emp.punchRow[col] : '';
@@ -86,15 +87,11 @@ function _parseAttLogReport(values) {
       });
     });
 
-    // Pair sequentially: IN then OUT
     for (var i = 0; i + 1 < events.length; i += 2) {
       var inn = events[i];
       var outt = events[i+1];
 
-      // Map IN day number to a real date (same month/year as period start)
       var inDate = new Date(start.getFullYear(), start.getMonth(), inn.day);
-
-      // Only keep rows within [start..end+1]
       if (inDate < start || inDate > endPlus) continue;
 
       var hours = _hoursBetween(inn.time, outt.time);
@@ -109,7 +106,6 @@ function _parseAttLogReport(values) {
     }
   });
 
-  // sort by date then employee
   outRows.sort(function(a,b){
     if (a[0] < b[0]) return -1;
     if (a[0] > b[0]) return 1;
@@ -120,7 +116,6 @@ function _parseAttLogReport(values) {
 }
 
 function _hoursBetween(timeIn, timeOut) {
-  // timeIn/timeOut are strings "HH:MM"
   var a = _toMinutes(timeIn);
   var b = _toMinutes(timeOut);
   var diff = (b >= a) ? (b - a) : ((b + 24*60) - a);
