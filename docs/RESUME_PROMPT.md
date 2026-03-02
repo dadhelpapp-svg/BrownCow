@@ -1,6 +1,6 @@
 # Resume Prompt (BrownCow Payroll Bot)
 
-Continue from this exact state. Don’t rehash basics. I’m on **Windows + PowerShell**. Project is a **Telegram payroll bot** using **Telegram → Cloudflare Worker (Wrangler) → Google Apps Script Web App → Google Sheets**. Source of truth is GitHub.
+Continue from this exact state. Don’t rehash basics. I’m on **Windows + PowerShell**. Project is a **single-bot** payroll automation using **Telegram → Cloudflare Worker (Wrangler) → Google Apps Script Web App → Google Sheets**. Source of truth is GitHub.
 
 Use the project handoff document as the source of truth:
 - `docs/RESUME_PROMPT.md` in this repo.
@@ -11,17 +11,16 @@ Use the project handoff document as the source of truth:
 ## Current “Known Good” Baseline
 
 - Repo: https://github.com/dadhelpapp-svg/BrownCow
-- Default branch: `main`
+- Branch: `main`
 
-Recent important commits:
-- `34d9a95` docs: update RESUME_PROMPT with current wiring + runbook
-- `931d73d` feat(apps-script): support `{action:"authorize"}` to trigger Drive consent check via POST
-- `98f747b` feat(apps-script): copy template to new payroll file and write normalized_attendance
+Important commits (recent):
+- `0ee99b7` docs: match tdci-style RESUME_PROMPT headings
+- `931d73d` feat(apps-script): support `{action:"authorize"}`
+- `98f747b` feat(apps-script): copy template into a new payroll file + write normalized_attendance
 
-Known reality / status:
-- Cloudflare Worker is deployed and reachable.
-- Telegram webhook is set and Worker receives POSTs.
-- Apps Script *logic* is implemented to copy a template via Drive, but **DriveApp requires one-time interactive Google consent** in the Apps Script editor. Until granted, template copy fails.
+Known status / blockers:
+- Worker is deployed and webhook is set.
+- Apps Script **Drive consent is still required** (copying template uses DriveApp). Until interactive consent is granted once, Apps Script returns `You do not have permission to call DriveApp...`.
 
 ---
 
@@ -45,15 +44,19 @@ Wrangler tail:
 
 ### Google Apps Script Web App
 - Project: “BrownCow Payroll Bot”
-- Purpose:
-  - Read attendance sheet (`Att.log report`)
-  - Copy payroll template into a **new output spreadsheet**
-  - Write `normalized_attendance`
-  - (Next) Fill `time_keeping` from `normalized_attendance` while preserving template formatting
+- Current /exec (single source of truth):
+  - https://script.google.com/macros/s/AKfycby9pFholPRDauCct2wHfzYhPA9slME3t35K2DHB3GbCsZIda4_lddtuNKHRevwKW72_/exec
 
-Important: Apps Script template copy uses:
-- `DriveApp.getFileById(templateId).makeCopy(outputFileName)`
-This requires one-time interactive authorization.
+Purpose:
+- Read attendance sheet (`Att.log report`)
+- Copy payroll template into a **new output spreadsheet**
+- Write `normalized_attendance`
+- Apply time formatting (`HH:mm`) on `time_keeping`
+- (Next) Fill `time_keeping` from `normalized_attendance` while preserving template formatting
+
+Drive dependency:
+- Uses `DriveApp.getFileById(templateId).makeCopy(outputFileName)`
+- Requires one-time interactive authorization under the deploying Google account.
 
 ### Google Sheets
 Attendance input (user sends URL):
@@ -83,7 +86,7 @@ Set with `wrangler secret put ...`:
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_SECRET` = `browncow_payroll_telegram_secret`
 - `ALLOWED_CHAT_IDS` = `-5173650582`
-- `APPS_SCRIPT_EXEC_URL` = Apps Script Web App `/exec` URL
+- `APPS_SCRIPT_EXEC_URL` = `https://script.google.com/macros/s/AKfycby9pFholPRDauCct2wHfzYhPA9slME3t35K2DHB3GbCsZIda4_lddtuNKHRevwKW72_/exec`
 - `PAYROLL_TEMPLATE_SPREADSHEET_ID` = `1N3YymDFidjVc5Yjh3t4aWZ4XbJEY2x05a6lzlw8T4GQ`
 
 ---
@@ -94,9 +97,9 @@ Set with `wrangler secret put ...`:
 - Deploy: `wrangler deploy`
 - Tail logs: `wrangler tail browncowpayrollbot --format json`
 
-### Telegram webhook
-- Set webhook (PowerShell):
-  - `POST https://api.telegram.org/bot<token>/setWebhook` with body `{ url: <worker>, secret_token: <TELEGRAM_SECRET> }`
+### Telegram webhook (PowerShell)
+- `POST https://api.telegram.org/bot<token>/setWebhook` with body:
+  - `{ url: "https://browncowpayrollbot.dadhelpapp.workers.dev", secret_token: "browncow_payroll_telegram_secret" }`
 
 ### Apps Script (PowerShell)
 Authorize check endpoint (may still require interactive editor approval):
