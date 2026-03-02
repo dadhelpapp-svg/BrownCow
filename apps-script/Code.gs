@@ -28,6 +28,7 @@ function doPost(e) {
 
     var outSs = SpreadsheetApp.openById(String(outputSpreadsheetId));
 
+    // Write normalized_attendance
     var stageName = 'normalized_attendance';
     var stage = outSs.getSheetByName(stageName);
     if (!stage) stage = outSs.insertSheet(stageName);
@@ -40,6 +41,9 @@ function doPost(e) {
       stage.getRange(2,1,parsed.rows.length,5).setValues(parsed.rows);
     }
 
+    // Apply number formats so time serials display as military time
+    formatTimeKeepingMilitary_(outSs);
+
     return _json({
       ok: true,
       message: 'normalized_attendance written to output spreadsheet',
@@ -51,6 +55,33 @@ function doPost(e) {
 
   } catch (err) {
     return _json({ ok: false, error: String(err && err.stack ? err.stack : err) });
+  }
+}
+
+/**
+ * Formats the time_keeping sheet to show time serials as HH:mm and hours as 0.00.
+ * Assumes fixed 13 placeholder blocks, each block is 3 columns:
+ *   TIME IN, TIME OUT, TOTAL HRS
+ * starting at column B and ending at column AN.
+ */
+function formatTimeKeepingMilitary_(ss) {
+  var sh = ss.getSheetByName('time_keeping');
+  if (!sh) return;
+
+  var startRow = 5;
+  var lastRow = sh.getLastRow();
+  if (lastRow < startRow) return;
+
+  var numRows = lastRow - startRow + 1;
+
+  var startCol = 2;  // B
+  var endCol   = 40; // AN
+
+  for (var c = startCol; c <= endCol; c += 3) {
+    // TIME IN + TIME OUT
+    sh.getRange(startRow, c, numRows, 2).setNumberFormat('HH:mm');
+    // TOTAL HRS
+    sh.getRange(startRow, c + 2, numRows, 1).setNumberFormat('0.00');
   }
 }
 
@@ -95,7 +126,6 @@ function _parseAttLogReport(values) {
       if (inDate < start || inDate > endPlus) continue;
 
       var hours = _hoursBetween(inn.time, outt.time);
-
       outRows.push([
         Utilities.formatDate(inDate, 'Etc/GMT', 'yyyy-MM-dd'),
         emp.name,
@@ -181,7 +211,7 @@ function _extractEmployees(values) {
     var r = values[i];
     if (!r || !r.length) continue;
     if (String(r[0]).indexOf('ID:') === 0) {
-      // name typically at col 10 with preceding "Name:" at col 8
+      // name typically at col 10
       var name = (r.length > 10) ? String(r[10]).trim() : '';
       var next = (i+1 < values.length) ? values[i+1] : [];
       var punchRow = (next && next.length && String(next[0]).indexOf('ID:') !== 0) ? next : [];
@@ -192,7 +222,7 @@ function _extractEmployees(values) {
 }
 
 function _spreadsheetIdFromUrl(url) {
-  var m = String(url).match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  var m = String(url).match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   if (!m) throw new Error('Could not extract spreadsheetId from URL');
   return m[1];
 }
