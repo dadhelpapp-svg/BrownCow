@@ -66,6 +66,42 @@ function doPost(e) {
 }
 
 /**
+ * Optional: open this URL in your browser once to authorize Drive/Sheets scopes.
+ * Visiting /exec?auth=1 will attempt a Drive operation and show a simple page.
+ */
+function doGet(e) {
+  if (e && e.parameter && e.parameter.auth === '1') {
+    try {
+      authorizeDrive_();
+      return HtmlService.createHtmlOutput('<h3>OK</h3><p>Drive authorized.</p>');
+    } catch (err) {
+      return HtmlService.createHtmlOutput('<h3>ERROR</h3><pre>' + _escHtml_(String(err && err.stack ? err.stack : err)) + '</pre>');
+    }
+  }
+  return HtmlService.createHtmlOutput('<h3>BrownCow Payroll Bot</h3><p>Use POST /exec for automation.</p><p>To authorize Drive: add <code>?auth=1</code> and open in browser.</p>');
+}
+
+/**
+ * Adds a menu in the Apps Script editor container (useful when opened as a spreadsheet-bound project).
+ * Safe no-op if UI is not available.
+ */
+function onOpen(e) {
+  try {
+    var ui = SpreadsheetApp.getUi();
+    ui.createMenu('BrownCow')
+      .addItem('Authorize Drive', 'authorizeDrive_')
+      .addToUi();
+  } catch (err) {
+    // ignore (not spreadsheet-bound)
+  }
+}
+
+function authorizeDrive_() {
+  // One-time authorization helper
+  DriveApp.getRootFolder();
+}
+
+/**
  * Formats the time_keeping sheet to show time serials as HH:mm and hours as 0.00.
  * Assumes fixed 13 placeholder blocks, each block is 3 columns:
  *   TIME IN, TIME OUT, TOTAL HRS
@@ -243,6 +279,15 @@ function _spreadsheetIdFromUrl(url) {
   var m = String(url).match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   if (!m) throw new Error('Could not extract spreadsheetId from URL');
   return m[1];
+}
+
+function _escHtml_(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function _json(obj) {
