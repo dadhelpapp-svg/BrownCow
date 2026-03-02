@@ -61,6 +61,7 @@ Purpose:
 - Write `normalized_attendance`
 - Apply time formatting (`HH:mm`) on `time_keeping`
 - (Next) Fill `time_keeping` from `normalized_attendance` while preserving template formatting
+- (Now) Compute payroll totals into a new tab per output sheet
 
 Drive dependency:
 - Uses `DriveApp.getFileById(templateId).makeCopy(outputFileName)`
@@ -142,6 +143,29 @@ Create a new payroll file:
 
 ---
 
+## Payroll rules (locked decisions)
+
+- Daily rates:
+  - Default daily rate: **485.00 PHP/day**
+  - `Seducon, Vhanesza L.`: **540.00 PHP/day**
+- Hourly rate: `daily_rate / 8`
+- Regular hours/day: **8**
+- OT hours/day: `max(0, hours_worked - 8)`
+- OT pay: `ot_hours * hourly_rate * ot_multiplier`
+  - For now, set most employees `ot_multiplier = 1`
+  - Set `Seducon, Vhanesza L.` `ot_multiplier = 1.25`
+- Night differential (ND) window: **22:00–00:00**
+- OT ND premium: **+6.75 PHP/hr** applied to OT hours that overlap the ND window
+
+Rates/config source of truth:
+- Add a `rates` tab in the payroll template.
+- Include a `DEFAULT` row plus per-employee overrides.
+
+Output:
+- Create a new output tab named `{MonthName YYYY} Payroll` (e.g., `February 2026 Payroll`) in each generated payroll spreadsheet.
+
+---
+
 ## Attendance Parsing (locked decisions)
 
 - Extract time tokens with regex `\d{1,2}:\d{2}` (supports concatenated punches)
@@ -182,6 +206,5 @@ Create a new payroll file:
 
 ## Next planned work
 
-1) Complete one-time Drive consent so template copy works.
-2) Implement `time_keeping` fill from `normalized_attendance` in Apps Script (write only names + times + dates; preserve formatting).
-3) Implement payroll month tab creation (e.g., `February 2026`, `(2)`, `(3)`...), compute regular/OT/ND in payroll template.
+1) Implement `time_keeping` fill from `normalized_attendance` in Apps Script (write only names + times + dates; preserve formatting).
+2) Implement payroll month tab creation (e.g., `February 2026`, `(2)`, `(3)`...), compute regular/OT/ND in payroll template.
