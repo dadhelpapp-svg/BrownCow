@@ -1,8 +1,11 @@
 /**
  * BrownCow Payroll Bot - Google Apps Script Web App
  *
- * Reads attendance from `attendanceSheetUrl` (expects tab `Att.log report`).
- * Writes staging tab `normalized_attendance` into `outputSpreadsheetId`.
+ * NEW FLOW (per run):
+ * - Reads attendance from `attendanceSheetUrl` (expects tab `Att.log report`).
+ * - Copies `payrollTemplateSpreadsheetId` into a BRAND-NEW payroll spreadsheet.
+ * - Writes staging tab `normalized_attendance` into the new payroll spreadsheet.
+ * - Applies number formats on `time_keeping` so time serials display as HH:mm.
  *
  * normalized_attendance contains ONLY complete IN/OUT pairs.
  */
@@ -12,10 +15,10 @@ function doPost(e) {
     var body = JSON.parse((e.postData && e.postData.contents) ? e.postData.contents : "{}");
 
     var attendanceSheetUrl = body.attendanceSheetUrl;
-    var outputSpreadsheetId = body.outputSpreadsheetId;
+    var payrollTemplateSpreadsheetId = body.payrollTemplateSpreadsheetId;
 
-    if (!attendanceSheetUrl || !outputSpreadsheetId) {
-      return _json({ ok: false, error: "missing attendanceSheetUrl or outputSpreadsheetId" });
+    if (!attendanceSheetUrl || !payrollTemplateSpreadsheetId) {
+      return _json({ ok: false, error: "missing attendanceSheetUrl or payrollTemplateSpreadsheetId" });
     }
 
     var attId = _spreadsheetIdFromUrl(attendanceSheetUrl);
@@ -26,7 +29,11 @@ function doPost(e) {
     var values = attSheet.getDataRange().getDisplayValues();
     var parsed = _parseAttLogReport(values);
 
-    var outSs = SpreadsheetApp.openById(String(outputSpreadsheetId));
+    // Create a fresh payroll spreadsheet by copying the template.
+    var outputFileName = body.outputFileName || ("BrownCow Payroll - " + _formatMonthLabel_(parsed.period));
+    var outFile = DriveApp.getFileById(String(payrollTemplateSpreadsheetId)).makeCopy(outputFileName);
+    var outputSpreadsheetId = outFile.getId();
+    var outSs = SpreadsheetApp.openById(outputSpreadsheetId);
 
     // Write normalized_attendance
     var stageName = 'normalized_attendance';
@@ -35,20 +42,20 @@ function doPost(e) {
     stage.clearContents();
 
     var header = [["date","employee","time_in","time_out","hours"]];
-    stage.getRange(1,1,1,header[0].length).setValues(header);
-
+    stage.getRange(1, 1, 1, header[0].length).setValues(header);
     if (parsed.rows.length) {
-      stage.getRange(2,1,parsed.rows.length,5).setValues(parsed.rows);
+      stage.getRange(2, 1, parsed.rows.length, 5).setValues(parsed.rows);
     }
 
-    // Apply number formats so time serials display as military time
+    // Apply formats (time_keeping is already formatted by template; this forces HH:mm display for any time serials)
     formatTimeKeepingMilitary_(outSs);
 
     return _json({
       ok: true,
-      message: 'normalized_attendance written to output spreadsheet',
+      message: 'created new payroll file and wrote normalized_attendance',
       attendanceSpreadsheetId: attId,
-      outputSpreadsheetId: String(outputSpreadsheetId),
+      outputSpreadsheetId: outputSpreadsheetId,
+      outputSpreadsheetUrl: 'https://docs.google.com/spreadsheets/d/' + outputSpreadsheetId + '/edit',
       normalizedRows: parsed.rows.length,
       period: parsed.period
     });
@@ -70,12 +77,12 @@ function formatTimeKeepingMilitary_(ss) {
 
   var startRow = 5;
   var lastRow = sh.getLastRow();
-  if (lastRow < startRow) return;
+  if (lastRow < startRow) lastRow = startRow + 200; // ensure we format a reasonable visible range
 
   var numRows = lastRow - startRow + 1;
 
   var startCol = 2;  // B
-  var endCol   = 40; // AN
+  var endCol = 40;   // AN
 
   for (var c = startCol; c <= endCol; c += 3) {
     // TIME IN + TIME OUT
@@ -96,7 +103,7 @@ function _parseAttLogReport(values) {
   var start = new Date(period.start + 'T00:00:00');
   var end = new Date(period.end + 'T00:00:00');
   // include +1 day
-  var endPlus = new Date(end.getTime() + 24*60*60*1000);
+  var endPlus = new Date(end.getTime() + 24 * 60 * 60 * 1000);
 
   var dayHeader = _findDayHeader(values);
   var colByDay = dayHeader.colByDay;
@@ -105,7 +112,6 @@ function _parseAttLogReport(values) {
   var employees = _extractEmployees(values);
 
   var outRows = [];
-
   employees.forEach(function(emp) {
     var events = [];
 
@@ -120,7 +126,7 @@ function _parseAttLogReport(values) {
 
     for (var i = 0; i + 1 < events.length; i += 2) {
       var inn = events[i];
-      var outt = events[i+1];
+      var outt = events[i + 1];
 
       var inDate = new Date(start.getFullYear(), start.getMonth(), inn.day);
       if (inDate < start || inDate > endPlus) continue;
@@ -136,7 +142,7 @@ function _parseAttLogReport(values) {
     }
   });
 
-  outRows.sort(function(a,b){
+  outRows.sort(function(a, b) {
     if (a[0] < b[0]) return -1;
     if (a[0] > b[0]) return 1;
     return a[1].localeCompare(b[1]);
@@ -145,10 +151,22 @@ function _parseAttLogReport(values) {
   return { period: period, rows: outRows };
 }
 
+function _formatMonthLabel_(period) {
+  try {
+    // period.start is YYYY-MM-DD
+    var y = parseInt(period.start.slice(0, 4), 10);
+    var m = parseInt(period.start.slice(5, 7), 10) - 1;
+    var d = new Date(y, m, 1);
+    return Utilities.formatDate(d, 'Etc/GMT', 'MMMM yyyy');
+  } catch (e) {
+    return 'Payroll';
+  }
+}
+
 function _hoursBetween(timeIn, timeOut) {
   var a = _toMinutes(timeIn);
   var b = _toMinutes(timeOut);
-  var diff = (b >= a) ? (b - a) : ((b + 24*60) - a);
+  var diff = (b >= a) ? (b - a) : ((b + 24 * 60) - a);
   return diff / 60;
 }
 
@@ -156,25 +174,25 @@ function _toMinutes(t) {
   var parts = String(t).split(':');
   var h = parseInt(parts[0], 10);
   var m = parseInt(parts[1], 10);
-  return (h*60) + m;
+  return (h * 60) + m;
 }
 
 function _extractTimeTokens(cell) {
-  var s = String(cell || '').replace(/\s+/g,'');
+  var s = String(cell || '').replace(/\s+/g, '');
   if (!s) return [];
   var m = s.match(/\d{1,2}:\d{2}/g);
   if (!m) return [];
-  return m.map(function(t){
-    var p=t.split(':');
-    var hh=('0'+parseInt(p[0],10)).slice(-2);
-    var mm=('0'+parseInt(p[1],10)).slice(-2);
-    return hh+':'+mm;
+  return m.map(function(t) {
+    var p = t.split(':');
+    var hh = ('0' + parseInt(p[0], 10)).slice(-2);
+    var mm = ('0' + parseInt(p[1], 10)).slice(-2);
+    return hh + ':' + mm;
   });
 }
 
 function _extractPeriod(values) {
-  for (var r=0; r<values.length; r++) {
-    for (var c=0; c<values[r].length; c++) {
+  for (var r = 0; r < values.length; r++) {
+    for (var c = 0; c < values[r].length; c++) {
       var s = values[r][c];
       if (typeof s !== 'string') continue;
       var m = s.match(/(\d{4}-\d{2}-\d{2})\s*~\s*(\d{4}-\d{2}-\d{2})/);
@@ -185,16 +203,16 @@ function _extractPeriod(values) {
 }
 
 function _findDayHeader(values) {
-  for (var r=0; r<values.length; r++) {
+  for (var r = 0; r < values.length; r++) {
     var row = values[r];
     if (!row || !row.length) continue;
     if (String(row[0]).trim() === '11') {
       var colByDay = {};
       var days = [];
-      for (var c=0; c<row.length; c++) {
+      for (var c = 0; c < row.length; c++) {
         var v = String(row[c]).trim();
         if (/^\d+$/.test(v)) {
-          var dn = parseInt(v,10);
+          var dn = parseInt(v, 10);
           days.push(dn);
           colByDay[dn] = c;
         }
@@ -207,13 +225,13 @@ function _findDayHeader(values) {
 
 function _extractEmployees(values) {
   var out = [];
-  for (var i=0; i<values.length; i++) {
+  for (var i = 0; i < values.length; i++) {
     var r = values[i];
     if (!r || !r.length) continue;
     if (String(r[0]).indexOf('ID:') === 0) {
       // name typically at col 10
       var name = (r.length > 10) ? String(r[10]).trim() : '';
-      var next = (i+1 < values.length) ? values[i+1] : [];
+      var next = (i + 1 < values.length) ? values[i + 1] : [];
       var punchRow = (next && next.length && String(next[0]).indexOf('ID:') !== 0) ? next : [];
       if (name) out.push({ name: name, punchRow: punchRow });
     }
