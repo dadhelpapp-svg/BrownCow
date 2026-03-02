@@ -1,10 +1,18 @@
+Use the project handoff document as the source of truth:
+`docs/RESUME_PROMPT.md` in the BrownCow repo:
+https://github.com/dadhelpapp-svg/BrownCow/blob/main/docs/RESUME_PROMPT.md
+
+Always read that file first and continue from its current state. Do not rehash basics.
+
+That document is intentionally maintained as a living summary and will be updated only with necessary, high-signal information (current known-good baseline/tag/commit, env URLs/IDs, commands, contracts, and any new incidents/fixes).
+
+If any chat context conflicts with the document, assume the document is correct and ask for confirmation before changing production.
+
+---
+
 # Resume Prompt (BrownCow Payroll Bot)
 
 Continue from this exact state. Don’t rehash basics. I’m on **Windows + PowerShell**. Project is a **single-bot** payroll automation using **Telegram → Cloudflare Worker (Wrangler) → Google Apps Script Web App → Google Sheets**. Source of truth is GitHub.
-
-Use the project handoff document as the source of truth:
-- `docs/RESUME_PROMPT.md` in this repo.
-- If any chat context conflicts with this document, assume this document is correct and ask for confirmation before changing production.
 
 ---
 
@@ -14,7 +22,7 @@ Use the project handoff document as the source of truth:
 - Branch: `main`
 
 Important commits (recent):
-- `0ee99b7` docs: match tdci-style RESUME_PROMPT headings
+- `0dc87ea` docs: simplify RESUME_PROMPT to single environment and pin current exec/worker/chat/template IDs
 - `931d73d` feat(apps-script): support `{action:"authorize"}`
 - `98f747b` feat(apps-script): copy template into a new payroll file + write normalized_attendance
 
@@ -102,7 +110,7 @@ Set with `wrangler secret put ...`:
   - `{ url: "https://browncowpayrollbot.dadhelpapp.workers.dev", secret_token: "browncow_payroll_telegram_secret" }`
 
 ### Apps Script (PowerShell)
-Authorize check endpoint (may still require interactive editor approval):
+Authorize check endpoint (still requires interactive editor approval at least once):
 - `POST /exec` body: `{ "action": "authorize" }`
 
 Create a new payroll file:
@@ -153,7 +161,7 @@ Create a new payroll file:
 - Fix: run a Drive-touching function once in the Apps Script editor under the deploying Google account and approve consent.
 
 2) **Wrong /exec URL**
-- Symptom: Apps Script returns old-schema errors (`outputSpreadsheetId` required)
+- Symptom: Apps Script returns old-schema errors
 - Fix: ensure Worker `APPS_SCRIPT_EXEC_URL` points to the deployment that matches current Code.gs.
 
 3) **Chat allowlist mismatch**
