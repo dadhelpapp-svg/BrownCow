@@ -550,7 +550,7 @@ function buildPayrollSummaryRows_(normalizedRows, ratesMap) {
 
 function writePayrollMonthSheet_(ss, period, normalizedRows) {
   var payrollSh = ensureMonthPayrollSheet_(ss, period);
-  var ratesMap = ensureAndLoadRates_(ss);
+  var calc = ensureAndWriteCalcDay_(ss);
 
   var header = [[
     "Employee","Rate","No. of Days","Gross Pay",
@@ -561,29 +561,193 @@ function writePayrollMonthSheet_(ss, period, normalizedRows) {
     "Deductions Total","Net Pay"
   ]];
 
+  payrollSh.clearContents();
   payrollSh.getRange(1,1,1,header[0].length).setValues(header);
   payrollSh.setFrozenRows(1);
 
-  var rows = buildPayrollSummaryRows_(normalizedRows, ratesMap);
-  if (rows.length) payrollSh.getRange(2,1,rows.length,header[0].length).setValues(rows);
+  // Unique employee list from calc sheet
+  var last = calc.getLastRow();
+  if (last < 2) return { sheetName: payrollSh.getName(), rowCount: 0 };
 
-  var n = Math.max(1, rows.length);
+  var emps = calc.getRange(2,2,last-1,1).getValues().map(function(r){ return String(r[0]||'').trim(); }).filter(Boolean);
+  var uniq = {};
+  emps.forEach(function(e){ uniq[e]=true; });
+  var list = Object.keys(uniq).sort();
 
+  // Write employee names
+  payrollSh.getRange(2,1,list.length,1).setValues(list.map(function(e){ return [e]; }));
+
+  // Write formulas row by row
+  for (var r = 0; r < list.length; r++) {
+    var row = 2 + r;
+    var empCell = 'A' + row;
+
+    var dailyRateF = _formulaDailyRate_(empCell);
+    var hourlyRateF = '=(' + dailyRateF.replace('=', '') + ')/8';
+    var otMulF = _formulaOtMultiplier_(empCell);
+    var ndPremF = _formulaNdPremium_(empCell);
+
+    // No. of Days
+    var daysF = '=COUNTUNIQUE(FILTER(_calc_day!A:A,_calc_day!B:B=' + empCell + '))';
+
+    // Late hours (decimal)
+    var lateHoursF = '=SUMIF(_calc_day!B:B,' + empCell + ',_calc_day!F:F)';
+
+    // Paid regular hours = SUM over days of MAX(0,8-late_hours_day)
+    // In helper sheet, late is per-day; compute paid regular hours by summing: 8 - late_hours
+    var paidRegHoursF = '=SUMIF(_calc_day!B:B,' + empCell + ',(8-_calc_day!F:F))';
+
+    // Gross Pay
+    var grossF = '=(' + paidRegHoursF.replace('=', '') + ')*(' + hourlyRateF + ')';
+
+    // OT Hours and OT Pay
+    var otHoursF = '=SUMIF(_calc_day!B:B,' + empCell + ',_calc_day!G:G)';
+    var otPayF = '=(' + otHoursF.replace('=', '') + ')*(' + hourlyRateF + ')*(' + otMulF.replace('=', '') + ')';
+
+    // ND Hours and ND Pay (nd_ot_hours from helper; currently 0 placeholder)
+    var ndHoursF = '=SUMIF(_calc_day!B:B,' + empCell + ',_calc_day!H:H)';
+    var ndPayF = '=(' + ndHoursF.replace('=', '') + ')*(' + ndPremF.replace('=', '') + ')';
+
+    // Manual fields
+    var specialHoliday = '0';
+    var ut = '0';
+    var sss = '0';
+    var phic = '0';
+    var pagibig = '0';
+
+    var additionsF = '=(' + otPayF + ')+(' + ndPayF + ')+(' + specialHoliday + ')';
+    var deductionsF = '=(' + lateHoursF.replace('=', '') + ')*(' + hourlyRateF + ')+(' + ut + ')+(' + sss + ')+(' + phic + ')+(' + pagibig + ')';
+    var netF = '=(' + grossF + ')+(' + additionsF + ')-(' + deductionsF + ')';
+
+    // Set formulas in row
+    payrollSh.getRange(row, 2).setFormula(hourlyRateF); // Rate
+    payrollSh.getRange(row, 3).setFormula(daysF);
+    payrollSh.getRange(row, 4).setFormula(grossF);
+    payrollSh.getRange(row, 5).setFormula(otHoursF);
+    payrollSh.getRange(row, 6).setFormula(otPayF);
+    payrollSh.getRange(row, 7).setFormula(ndHoursF);
+    payrollSh.getRange(row, 8).setFormula(ndPayF);
+    payrollSh.getRange(row, 9).setValue(0);
+    payrollSh.getRange(row,10).setFormula(additionsF);
+    payrollSh.getRange(row,11).setFormula(lateHoursF);
+    payrollSh.getRange(row,12).setValue(0);
+    payrollSh.getRange(row,13).setValue(0);
+    payrollSh.getRange(row,14).setValue(0);
+    payrollSh.getRange(row,15).setValue(0);
+    payrollSh.getRange(row,16).setFormula(deductionsF);
+    payrollSh.getRange(row,17).setFormula(netF);
+  }
+
+  // Formats
+  var n = Math.max(1, list.length);
   payrollSh.getRange(2,2,n,1).setNumberFormat('0.00');  // Rate
-  payrollSh.getRange(2,4,n,1).setNumberFormat('0.00');  // Gross Pay
+  payrollSh.getRange(2,4,n,1).setNumberFormat('0.00');  // Gross
   payrollSh.getRange(2,6,n,1).setNumberFormat('0.00');  // OT Pay
   payrollSh.getRange(2,8,n,1).setNumberFormat('0.00');  // ND Pay
   payrollSh.getRange(2,9,n,2).setNumberFormat('0.00');  // Special Holiday + Additions
-  payrollSh.getRange(2,12,n,4).setNumberFormat('0.00'); // UT, SSS, PHIC, Pag-IBIG
-  payrollSh.getRange(2,16,n,2).setNumberFormat('0.00'); // Deductions, Net
-
-  payrollSh.getRange(2,3,n,1).setNumberFormat('0');     // No. of Days
-  payrollSh.getRange(2,5,n,1).setNumberFormat('0.00');  // OT Hours
-  payrollSh.getRange(2,7,n,1).setNumberFormat('0.00');  // ND Hours
-  payrollSh.getRange(2,11,n,1).setNumberFormat('0');    // LATE minutes
+  payrollSh.getRange(2,11,n,1).setNumberFormat('0.00'); // LATE hours
+  payrollSh.getRange(2,12,n,4).setNumberFormat('0.00'); // UT/SSS/PHIC/Pag-IBIG
+  payrollSh.getRange(2,16,n,2).setNumberFormat('0.00'); // Deductions + Net
 
   payrollSh.autoResizeColumns(1, header[0].length);
 
-  return { sheetName: payrollSh.getName(), rowCount: rows.length };
+  return { sheetName: payrollSh.getName(), rowCount: list.length };
 }
 
+
+
+/**
+ * Ensure helper sheet `_calc_day` exists and populate it with per-employee-per-date aggregates.
+ * This sheet is intended for formula references from the client-facing Payroll sheet.
+ *
+ * Columns:
+ * A date
+ * B employee
+ * C worked_hours
+ * D first_in
+ * E second_in
+ * F late_hours (decimal)
+ * G ot_hours
+ * H nd_ot_hours (approx = MIN(ot_hours, nd_overlap_hours_total))
+ */
+function ensureAndWriteCalcDay_(ss) {
+  var name = '_calc_day';
+  var sh = ss.getSheetByName(name);
+  if (!sh) sh = ss.insertSheet(name);
+
+  // Build unique (date, employee) list from normalized_attendance
+  var stage = ss.getSheetByName('normalized_attendance');
+  if (!stage) throw new Error('normalized_attendance sheet missing');
+
+  var lastRow = stage.getLastRow();
+  if (lastRow < 2) {
+    sh.clearContents();
+    sh.getRange(1,1,1,8).setValues([["date","employee","worked_hours","first_in","second_in","late_hours","ot_hours","nd_ot_hours"]]);
+    return sh;
+  }
+
+  var data = stage.getRange(2,1,lastRow-1,5).getValues();
+  var map = {};
+  data.forEach(function(r){
+    var date = r[0];
+    var emp = r[1];
+    var timeIn = r[2];
+    var timeOut = r[3];
+    var hours = Number(r[4] || 0);
+    var key = date + '||' + emp;
+    if (!map[key]) map[key] = {date: date, emp: emp, hours: 0, ins: []};
+    map[key].hours += hours;
+    if (timeIn) map[key].ins.push(String(timeIn));
+  });
+
+  var rows = [];
+  Object.keys(map).sort().forEach(function(k){
+    var g = map[k];
+    g.ins.sort();
+    var firstIn = g.ins.length ? g.ins[0] : '';
+    var secondIn = (g.ins.length >= 2) ? g.ins[1] : '';
+
+    // late hours with 15-min grace: shift1 11:00, shift2 16:00
+    var lateMin = 0;
+    if (firstIn) lateMin += _lateMinutesWithGrace_(firstIn, '11:00', 15);
+    if (secondIn) lateMin += _lateMinutesWithGrace_(secondIn, '16:00', 15);
+    var lateHours = lateMin / 60;
+
+    var otHours = Math.max(0, g.hours - 8);
+
+    // ND OT hours (approx): compute ND overlap over whole shift pairs is complex in formulas;
+    // keep an approximation: 0 for now; will be refined later if needed.
+    var ndOtHours = 0;
+
+    rows.push([g.date, g.emp, Math.round(g.hours*100)/100, firstIn, secondIn, Math.round(lateHours*100)/100, Math.round(otHours*100)/100, ndOtHours]);
+  });
+
+  sh.clearContents();
+  sh.getRange(1,1,1,8).setValues([["date","employee","worked_hours","first_in","second_in","late_hours","ot_hours","nd_ot_hours"]]);
+  if (rows.length) sh.getRange(2,1,rows.length,8).setValues(rows);
+  sh.setFrozenRows(1);
+  return sh;
+}
+
+/**
+ * Lookup helpers for formulas.
+ * Rates tab contract:
+ * - DEFAULT at rates!B2 (daily rate)
+ * - employee list starts at A3
+ * - daily_rate at B3:B
+ * - ot_multiplier at C3:C
+ * - nd_premium_per_hr at E3:E
+ */
+function _formulaDailyRate_(employeeCellA1) {
+  // returns a formula string
+  return '=IFERROR(VLOOKUP(' + employeeCellA1 + ',rates!A3:B,2,FALSE),rates!B2)';
+}
+
+function _formulaOtMultiplier_(employeeCellA1) {
+  return '=IFERROR(VLOOKUP(' + employeeCellA1 + ',rates!A3:C,3,FALSE),1)';
+}
+
+function _formulaNdPremium_(employeeCellA1) {
+  // flat premium per hour
+  return '=IFERROR(VLOOKUP(' + employeeCellA1 + ',rates!A3:E,5,FALSE),0)';
+}
