@@ -140,40 +140,40 @@ function _parseAttLogReport(values) {
   var employees = _extractEmployees(values);
 
   var outRows = [];
-  employees.forEach(function(emp) {
-    var events = [];
 
+  employees.forEach(function(emp) {
     days.forEach(function(dn) {
       var col = colByDay[dn];
       var cell = (col != null && col < emp.punchRow.length) ? emp.punchRow[col] : '';
       var toks = _extractTimeTokens(cell);
-      toks.forEach(function(t) {
-        events.push({ day: dn, time: t });
-      });
+
+      // Pair sequentially within the day cell to avoid cross-day pairing.
+      for (var i = 0; i + 1 < toks.length; i += 2) {
+        var timeIn = toks[i];
+        var timeOut = toks[i + 1];
+
+        var inDate = new Date(start.getFullYear(), start.getMonth(), dn);
+        if (inDate < start || inDate > endPlus) continue;
+
+        var hours = _hoursBetween(timeIn, timeOut);
+        outRows.push([
+          Utilities.formatDate(inDate, 'Etc/GMT', 'yyyy-MM-dd'),
+          emp.name,
+          timeIn,
+          timeOut,
+          Math.round(hours * 100) / 100
+        ]);
+      }
     });
-
-    for (var i = 0; i + 1 < events.length; i += 2) {
-      var inn = events[i];
-      var outt = events[i + 1];
-
-      var inDate = new Date(start.getFullYear(), start.getMonth(), inn.day);
-      if (inDate < start || inDate > endPlus) continue;
-
-      var hours = _hoursBetween(inn.time, outt.time);
-      outRows.push([
-        Utilities.formatDate(inDate, 'Etc/GMT', 'yyyy-MM-dd'),
-        emp.name,
-        inn.time,
-        outt.time,
-        Math.round(hours * 100) / 100
-      ]);
-    }
   });
 
   outRows.sort(function(a, b) {
     if (a[0] < b[0]) return -1;
     if (a[0] > b[0]) return 1;
-    return a[1].localeCompare(b[1]);
+    var ea = String(a[1]), eb = String(b[1]);
+    if (ea < eb) return -1;
+    if (ea > eb) return 1;
+    return String(a[2] || '').localeCompare(String(b[2] || ''));
   });
 
   return { period: period, rows: outRows };
@@ -388,8 +388,30 @@ function _ndOverlapHours_(timeIn, timeOut) {
  * Output row schema:
  * date | employee | time_in | time_out | hours | regular_hours | ot_hours | nd_ot_hours | daily_rate | hourly_rate | ot_multiplier | regular_pay | ot_pay | nd_ot_premium | total_pay
  */
-function buildPayrollDailyRows_(normalizedRows, ratesMap) {
-  var out = [];
+
+function _minutesSinceMidnight_(hhmm) {
+  return _toMinutes(hhmm);
+}
+
+function _lateMinutesWithGrace_(actualInHHMM, scheduledHHMM, graceMinutes) {
+  var actual = _minutesSinceMidnight_(actualInHHMM);
+  var sched = _minutesSinceMidnight_(scheduledHHMM) + graceMinutes;
+  return Math.max(0, actual - sched);
+}
+
+function _uniqueDatesCount_(dateSetObj) {
+  return Object.keys(dateSetObj || {}).length;
+}
+
+/**
+ * Summarize normalized_attendance rows into per-employee payroll totals.
+ * normalizedRows schema: [date, employee, time_in, time_out, hours]
+ */
+function buildPayrollSummaryRows_(normalizedRows, ratesMap) {
+  var byEmpDate = {}; // emp||date -> { employee, date, shifts:[], workedHours }
+  var empDates = {};  // emp -> {date:true}
+  var employees = {}; // emp -> true
+
   for (var i = 0; i < normalizedRows.length; i++) {
     var r = normalizedRows[i];
     var date = r[0];
@@ -398,39 +420,129 @@ function buildPayrollDailyRows_(normalizedRows, ratesMap) {
     var timeOut = r[3];
     var hours = Number(r[4] || 0);
 
-    var regularHours = Math.min(8, hours);
-    var otHours = Math.max(0, hours - 8);
+    employees[employee] = true;
+    if (!empDates[employee]) empDates[employee] = {};
+    empDates[employee][date] = true;
 
-    var rate = _getRateFor_(ratesMap, employee);
+    var key = employee + '||' + date;
+    if (!byEmpDate[key]) byEmpDate[key] = { employee: employee, date: date, shifts: [], workedHours: 0 };
+
+    byEmpDate[key].shifts.push({
+      timeIn: timeIn,
+      timeOut: timeOut,
+      hours: hours,
+      ndOverlap: _ndOverlapHours_(timeIn, timeOut)
+    });
+    byEmpDate[key].workedHours += hours;
+  }
+
+  var summary = {};
+  Object.keys(employees).forEach(function(emp) {
+    var rate = _getRateFor_(ratesMap, emp);
     var dailyRate = Number(rate.daily_rate || 0);
     var hourlyRate = dailyRate / 8;
     var otMultiplier = Number(rate.ot_multiplier || 1);
     var ndPremiumPerHr = Number(rate.nd_ot_premium_per_hr || 0);
 
-    // ND overlap (hours) for the whole shift; premium applies ONLY to OT hours overlapping ND.
-    var ndOverlap = _ndOverlapHours_(timeIn, timeOut);
-    var ndOtHours = Math.min(otHours, ndOverlap);
+    summary[emp] = {
+      employee: emp,
+      rate: hourlyRate,
+      otMultiplier: otMultiplier,
+      ndPremiumPerHr: ndPremiumPerHr,
 
-    var regularPay = regularHours * hourlyRate;
-    var otPay = otHours * hourlyRate * otMultiplier;
-    var ndOtPremium = ndOtHours * ndPremiumPerHr;
-    var totalPay = regularPay + otPay + ndOtPremium;
+      days: _uniqueDatesCount_(empDates[emp]),
+      lateMinutes: 0,
 
-    function r2(x){ return Math.round(x * 100) / 100; }
+      regularHours: 0,
+      otHours: 0,
+      ndHours: 0,
+
+      grossPay: 0,
+      otPay: 0,
+      ndPay: 0,
+
+      // manual placeholders
+      specialHolidayPay: 0,
+      ut: 0,
+      sss: 0,
+      phic: 0,
+      pagibig: 0
+    };
+  });
+
+  Object.keys(byEmpDate).forEach(function(k) {
+    var g = byEmpDate[k];
+    var s = summary[g.employee];
+    if (!s) return;
+
+    g.shifts.sort(function(a, b) { return String(a.timeIn).localeCompare(String(b.timeIn)); });
+
+    var late1 = 0, late2 = 0;
+    if (g.shifts.length >= 1) late1 = _lateMinutesWithGrace_(g.shifts[0].timeIn, '11:00', 15);
+    if (g.shifts.length >= 2) late2 = _lateMinutesWithGrace_(g.shifts[1].timeIn, '16:00', 15);
+
+    var lateMin = late1 + late2;
+    s.lateMinutes += lateMin;
+
+    var lateHours = lateMin / 60;
+    var paidRegularHours = Math.max(0, 8 - lateHours);
+
+    var worked = Number(g.workedHours || 0);
+    var dayOt = Math.max(0, worked - 8);
+
+    s.regularHours += paidRegularHours;
+    s.otHours += dayOt;
+
+    // Allocate OT to last shift first to compute ND OT hours
+    var otRemaining = dayOt;
+    var ndOtHoursForDay = 0;
+    for (var si = g.shifts.length - 1; si >= 0; si--) {
+      var sh = g.shifts[si];
+      var shiftOt = Math.min(Number(sh.hours || 0), otRemaining);
+      otRemaining -= shiftOt;
+
+      var ndOt = Math.min(shiftOt, Number(sh.ndOverlap || 0));
+      ndOtHoursForDay += ndOt;
+
+      if (otRemaining <= 0) break;
+    }
+
+    s.ndHours += ndOtHoursForDay;
+
+    s.grossPay += paidRegularHours * s.rate;
+    s.otPay += dayOt * s.rate * s.otMultiplier;
+    s.ndPay += ndOtHoursForDay * s.ndPremiumPerHr;
+  });
+
+  function r2(x) { return Math.round(Number(x || 0) * 100) / 100; }
+
+  var out = [];
+  Object.keys(summary).sort().forEach(function(emp) {
+    var s = summary[emp];
+
+    var additionsTotal = s.otPay + s.ndPay + s.specialHolidayPay;
+    var deductionsTotal = (s.lateMinutes / 60) * s.rate + s.ut + s.sss + s.phic + s.pagibig;
+    var netPay = s.grossPay + additionsTotal - deductionsTotal;
 
     out.push([
-      date, employee, timeIn, timeOut, r2(hours),
-      r2(regularHours), r2(otHours), r2(ndOtHours),
-      r2(dailyRate), r2(hourlyRate), otMultiplier,
-      r2(regularPay), r2(otPay), r2(ndOtPremium), r2(totalPay)
+      s.employee,
+      r2(s.rate),
+      s.days,
+      r2(s.grossPay),
+      r2(s.otHours),
+      r2(s.otPay),
+      r2(s.ndHours),
+      r2(s.ndPay),
+      r2(s.specialHolidayPay),
+      r2(additionsTotal),
+      Math.round(s.lateMinutes),
+      r2(s.ut),
+      r2(s.sss),
+      r2(s.phic),
+      r2(s.pagibig),
+      r2(deductionsTotal),
+      r2(netPay)
     ]);
-  }
-
-  // Sort: date then employee
-  out.sort(function(a,b){
-    if (a[0] < b[0]) return -1;
-    if (a[0] > b[0]) return 1;
-    return String(a[1]).localeCompare(String(b[1]));
   });
 
   return out;
@@ -441,30 +553,37 @@ function writePayrollMonthSheet_(ss, period, normalizedRows) {
   var ratesMap = ensureAndLoadRates_(ss);
 
   var header = [[
-    "date","employee","time_in","time_out","hours",
-    "regular_hours","ot_hours","nd_ot_hours",
-    "daily_rate","hourly_rate","ot_multiplier",
-    "regular_pay","ot_pay","nd_ot_premium","total_pay"
+    "Employee","Rate","No. of Days","Gross Pay",
+    "OT Hours","OT Pay",
+    "ND Hours","ND Pay",
+    "Special Holiday Pay","Additions Total",
+    "LATE","UT","SSS","PHIC","Pag-IBIG",
+    "Deductions Total","Net Pay"
   ]];
 
   payrollSh.getRange(1,1,1,header[0].length).setValues(header);
   payrollSh.setFrozenRows(1);
 
-  var rows = buildPayrollDailyRows_(normalizedRows, ratesMap);
-  if (rows.length) {
-    payrollSh.getRange(2,1,rows.length,header[0].length).setValues(rows);
-  }
+  var rows = buildPayrollSummaryRows_(normalizedRows, ratesMap);
+  if (rows.length) payrollSh.getRange(2,1,rows.length,header[0].length).setValues(rows);
 
-  // Formats
-  payrollSh.getRange(2,3,Math.max(1, rows.length),2).setNumberFormat('HH:mm'); // time_in/out
-  payrollSh.getRange(2,5,Math.max(1, rows.length),4).setNumberFormat('0.00');  // hours + reg/ot/nd
-  payrollSh.getRange(2,9,Math.max(1, rows.length),2).setNumberFormat('0.00');  // daily/hourly
-  payrollSh.getRange(2,12,Math.max(1, rows.length),4).setNumberFormat('0.00'); // pay columns
+  var n = Math.max(1, rows.length);
+
+  payrollSh.getRange(2,2,n,1).setNumberFormat('0.00');  // Rate
+  payrollSh.getRange(2,4,n,1).setNumberFormat('0.00');  // Gross Pay
+  payrollSh.getRange(2,6,n,1).setNumberFormat('0.00');  // OT Pay
+  payrollSh.getRange(2,8,n,1).setNumberFormat('0.00');  // ND Pay
+  payrollSh.getRange(2,9,n,2).setNumberFormat('0.00');  // Special Holiday + Additions
+  payrollSh.getRange(2,12,n,4).setNumberFormat('0.00'); // UT, SSS, PHIC, Pag-IBIG
+  payrollSh.getRange(2,16,n,2).setNumberFormat('0.00'); // Deductions, Net
+
+  payrollSh.getRange(2,3,n,1).setNumberFormat('0');     // No. of Days
+  payrollSh.getRange(2,5,n,1).setNumberFormat('0.00');  // OT Hours
+  payrollSh.getRange(2,7,n,1).setNumberFormat('0.00');  // ND Hours
+  payrollSh.getRange(2,11,n,1).setNumberFormat('0');    // LATE minutes
 
   payrollSh.autoResizeColumns(1, header[0].length);
 
-  return {
-    sheetName: payrollSh.getName(),
-    rowCount: rows.length
-  };
+  return { sheetName: payrollSh.getName(), rowCount: rows.length };
 }
+
