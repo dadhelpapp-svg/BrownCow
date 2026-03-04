@@ -138,33 +138,43 @@ function _parseAttLogReport(values) {
   var days = dayHeader.days; // e.g., [11..26]
 
   var employees = _extractEmployees(values);
-
   var outRows = [];
 
   employees.forEach(function(emp) {
+    // Build one left-to-right punch stream across day columns.
+    // Each event tracks which day-column it came from; the IN punch day determines the row date.
+    var events = [];
+
     days.forEach(function(dn) {
       var col = colByDay[dn];
       var cell = (col != null && col < emp.punchRow.length) ? emp.punchRow[col] : '';
       var toks = _extractTimeTokens(cell);
-
-      // Pair sequentially within the day cell to avoid cross-day pairing.
-      for (var i = 0; i + 1 < toks.length; i += 2) {
-        var timeIn = toks[i];
-        var timeOut = toks[i + 1];
-
-        var inDate = new Date(start.getFullYear(), start.getMonth(), dn);
-        if (inDate < start || inDate > endPlus) continue;
-
-        var hours = _hoursBetween(timeIn, timeOut);
-        outRows.push([
-          Utilities.formatDate(inDate, 'Etc/GMT', 'yyyy-MM-dd'),
-          emp.name,
-          timeIn,
-          timeOut,
-          Math.round(hours * 100) / 100
-        ]);
-      }
+      toks.forEach(function(t) {
+        events.push({ dn: dn, t: t });
+      });
     });
+
+    // Pair sequentially across the full stream.
+    for (var k = 0; k + 1 < events.length; k += 2) {
+      var inEv = events[k];
+      var outEv = events[k + 1];
+
+      var timeIn = inEv.t;
+      var timeOut = outEv.t;
+
+      // Date is determined by the IN punch day-column.
+      var inDate = new Date(start.getFullYear(), start.getMonth(), inEv.dn);
+      if (inDate < start || inDate > endPlus) continue;
+
+      var hours = _hoursBetween(timeIn, timeOut);
+      outRows.push([
+        Utilities.formatDate(inDate, 'Etc/GMT', 'yyyy-MM-dd'),
+        emp.name,
+        timeIn,
+        timeOut,
+        Math.round(hours * 100) / 100
+      ]);
+    }
   });
 
   outRows.sort(function(a, b) {
@@ -178,6 +188,7 @@ function _parseAttLogReport(values) {
 
   return { period: period, rows: outRows };
 }
+
 
 function _formatMonthLabel_(period) {
   try {
