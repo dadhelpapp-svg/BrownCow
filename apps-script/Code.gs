@@ -265,10 +265,11 @@ function _findDayHeader(values) {
 
 
 function _extractEmployees(values) {
-  // Fixed layout:
+  // Fixed layout (per sheet map):
   // Row 5 (0-based 4) is first employee header, row 6 (0-based 5) is first employee punches.
   // Employees repeat every 2 rows: header row N, punch row N+1.
-  // EmployeeID = column B (index 1), Name = column I (index 8), Dept = column U (index 20).
+  // Name lives in column K (index 10) (e.g., K7, K9, K11...).
+  // EmployeeID lives in column B (index 1). Dept lives in column U (index 20).
   var out = [];
   if (!values || values.length < 6) return out;
 
@@ -276,11 +277,11 @@ function _extractEmployees(values) {
     var headerRow = values[r] || [];
     var punchRow = (r + 1 < values.length) ? (values[r + 1] || []) : [];
 
-    var name = String(headerRow[8] || '').trim();
+    var name = String(headerRow[10] || '').trim();
     var empId = String(headerRow[1] || '').trim();
     var dept = String(headerRow[20] || '').trim();
 
-    // Stop when we hit an empty block
+    // Skip empty blocks
     if (!name && !empId) continue;
 
     out.push({ name: name || empId || ('EMP_' + r), employeeId: empId, dept: dept, punchRow: punchRow });
@@ -288,6 +289,7 @@ function _extractEmployees(values) {
 
   return out;
 }
+
 
 
 function _spreadsheetIdFromUrl(url) {
