@@ -74,8 +74,8 @@ Attendance input (user sends URL):
 
 Payroll Template (format-only; copied each run):
 - Name: `BrownCow Payroll - Template`
-- Template Spreadsheet ID: `1N3YymDFidjVc5Yjh3t4aWZ4XbJEY2x05a6lzlw8T4GQ`
-- URL: https://docs.google.com/spreadsheets/d/1N3YymDFidjVc5Yjh3t4aWZ4XbJEY2x05a6lzlw8T4GQ/edit?gid=1030704585#gid=1030704585
+- Template Spreadsheet ID: `1szqCW-bR1VfIgoACJW27OQTecjHj4sFYyhxce8xYIsA`
+- URL: https://docs.google.com/spreadsheets/d/1szqCW-bR1VfIgoACJW27OQTecjHj4sFYyhxce8xYIsA/edit
 
 Template requirements:
 - `time_keeping` tab exists
@@ -111,6 +111,26 @@ Set with `wrangler secret put ...`:
   - `{ url: "https://browncowpayrollbot.dadhelpapp.workers.dev", secret_token: "browncow_payroll_telegram_secret" }`
 
 ### Apps Script (PowerShell)
+Authorize smoke test (Drive consent warmup):
+- `POST /exec` body: `{"action":"authorize"}`
+- PowerShell:
+  - `$exec = "https://script.google.com/macros/s/AKfycbylciB9sHopkPyvyMhuxRgL6WO2LMiVRifEbCuQQ2SJlcH6-UihUR9Wdk8tK6Gm_1YG/exec"`
+  - `Invoke-RestMethod -Method Post -Uri $exec -ContentType "application/json" -Body '{"action":"authorize"}'`
+
+Create a new payroll file (copy template + write normalized_attendance):
+- Required JSON body:
+  - `attendanceSheetUrl` (full Google Sheets URL)
+  - `payrollTemplateSpreadsheetId` (template spreadsheet ID)
+- PowerShell (here-string):
+  - `$exec = "https://script.google.com/macros/s/AKfycbylciB9sHopkPyvyMhuxRgL6WO2LMiVRifEbCuQQ2SJlcH6-UihUR9Wdk8tK6Gm_1YG/exec"`
+  - `$body = @"
+{
+  "attendanceSheetUrl": "https://docs.google.com/spreadsheets/d/1qSFdNVqtBTat1PzMEkgiPKvvh3BiEdXq1RJurOLg74E/edit",
+  "payrollTemplateSpreadsheetId": "1szqCW-bR1VfIgoACJW27OQTecjHj4sFYyhxce8xYIsA"
+}
+"@`
+  - `Invoke-RestMethod -Method Post -Uri $exec -ContentType "application/json" -Body $body`
+
 Authorize check endpoint (still requires interactive editor approval at least once):
 - `POST /exec` body: `{ "action": "authorize" }`
 
@@ -145,105 +165,3 @@ Create a new payroll file:
 
 ## Payroll rules (locked decisions)
 
-- Daily rates:
-  - Default daily rate: **485.00 PHP/day**
-  - `Seducon, Vhanesza L.`: **540.00 PHP/day**
-- Hourly rate: `daily_rate / 8`
-- Regular hours/day: **8**
-- OT hours/day: `max(0, hours_worked - 8)`
-- OT pay: `ot_hours * hourly_rate * ot_multiplier`
-  - For now, set most employees `ot_multiplier = 1`
-  - Set `Seducon, Vhanesza L.` `ot_multiplier = 1.25`
-- Night differential (ND) window: **22:00–00:00**
-- OT ND premium: **+6.75 PHP/hr** applied to OT hours that overlap the ND window
-
-Rates/config source of truth:
-- Add a `rates` tab in the payroll template.
-- Include a `DEFAULT` row plus per-employee overrides.
-
-Output:
-- Create a new output tab named `{MonthName YYYY} Payroll` (e.g., `February 2026 Payroll`) in each generated payroll spreadsheet.
-
----
-
-## Attendance Parsing (locked decisions)
-
-- Extract time tokens with regex `\d{1,2}:\d{2}` (supports concatenated punches)
-- For each employee: flatten tokens left-to-right across day columns; pair sequentially:
-  - token0 = IN, token1 = OUT, token2 = IN, token3 = OUT...
-- Workday attribution: IN day
-- Overnight: if OUT < IN, treat OUT as next day (duration adds 24h)
-- `normalized_attendance` contains ONLY complete IN/OUT pairs
-
----
-
-## Incidents / Fixes (important)
-
-1) **Google Apps Script Drive authorization**
-- Symptom: `You do not have permission to call DriveApp.getFileById/getRootFolder`
-- Cause: Drive scope not yet approved interactively
-- Fix: run a Drive-touching function once in the Apps Script editor under the deploying Google account and approve consent.
-
-2) **Wrong /exec URL**
-- Symptom: Apps Script returns old-schema errors
-- Fix: ensure Worker `APPS_SCRIPT_EXEC_URL` points to the deployment that matches current Code.gs.
-
-3) **Chat allowlist mismatch**
-- Symptom: Worker responds `chat_not_allowed`
-- Fix: set `ALLOWED_CHAT_IDS` exactly to `-5173650582` (no quotes/brackets)
-
----
-
-## 2026-03-01 Status / last known-good run
-
-- Apps Script Web App deployment: **Execute as: Me** (`dadhelpapp@gmail.com`)
-- PowerShell smoke tests:
-  - `POST {"action":"authorize"}` => `ok: true`
-  - Payroll creation => `ok: true`, `normalizedRows: 39`, period `2026-02-11 ~ 2026-02-25`
-- Example output spreadsheet: https://docs.google.com/spreadsheets/d/1Rpb3Vi1aG3KbzQkCTPirkTNMKb6Sj1qcZBKmDLAPOpk/edit
-
----
-
-
-
----
-
-## 2026-03-03 Update: Payroll summary + clasp notes
-
-- PR merged: https://github.com/dadhelpapp-svg/BrownCow/pull/3 (client-facing Payroll summary tab; late/OT/ND rules; normalization pairing fix).
-
-Rates tab contract (template + output copy):
-- Headers: `employee`, `daily_rate`, `ot_multiplier`, `nd_ot_premium`, `nd_premium_per_hr`
-- DEFAULT row: `A2=DEFAULT` and default daily rate at `rates!B2`
-- Per-employee starts at row 3: names `A3:A`, daily `B3:B`, ot_multiplier `C3:C`, ND flat premium/hr `E3:E`
-- Hourly rate is always `daily_rate / 8`.
-
-Current production deploy notes (Windows + PowerShell):
-- Clasp version: `3.2.0`
-- Working folder used: `C:\bc_clasp`
-- Important clasp pitfall: having both `Code.js` and `Code.gs` causes `A file with this name already exists in the current project: Code` (delete `Code.js`).
-- Pinned Apps Script Web App deployment ID (keep same /exec): `AKfycbylciB9sHopkPyvyMhuxRgL6WO2LMiVRifEbCuQQ2SJlcH6-UihUR9Wdk8tK6Gm_1YG`
-
-Client-facing payroll rules (summary tab):
-- LATE computed with 15-min grace:
-  - Shift 1 scheduled 11:00 (late after 11:15)
-  - Shift 2 scheduled 16:00 (late after 16:15)
-- LATE display: hours (decimal)
-- Paid regular hours/day: `max(0, 8 - late_hours)`; `gross_pay = paid_regular_hours * hourly_rate`
-- OT enabled (daily): `ot_hours = max(0, worked_hours - 8)`; `ot_pay = ot_hours * hourly_rate * ot_multiplier`
-- ND uses flat premium/hr (`rates.nd_premium_per_hr`, column E) and adds to base; applied to OT hours overlapping ND window 22:00–00:00.
-- Manual fields (do not compute): Special Holiday Pay, UT, SSS, PHIC, Pag-IBIG.
-
-New requirement discovered post-merge:
-- Client wants Payroll tab to contain **formulas** (not only script-calculated values) and rate fallback must use default daily rate at `rates!B2` when employee not found.
-
-Next steps (tomorrow):
-1) Implement formula-driven Payroll tab using helper sheet `_calc_day` (allowed) and update Apps Script accordingly.
-2) Ensure rate lookup falls back to `rates!B2` daily rate, then compute hourly as `/8`.
-3) Deploy via clasp: download `apps-script/Code.gs` from GitHub `main`, `clasp push`, redeploy pinned deployment ID above.
-
-
-## Next planned work
-
-1) Implement `time_keeping` fill from `normalized_attendance` in Apps Script (write only names + times + dates; preserve formatting).
-2) Implement payroll month tab creation (e.g., `February 2026`, `(2)`, `(3)`...), compute regular/OT/ND in payroll template.
