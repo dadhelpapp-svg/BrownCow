@@ -242,41 +242,53 @@ function _extractPeriod(values) {
 }
 
 function _findDayHeader(values) {
-  for (var r = 0; r < values.length; r++) {
-    var row = values[r];
-    if (!row || !row.length) continue;
-    if (String(row[0]).trim() === '11') {
-      var colByDay = {};
-      var days = [];
-      for (var c = 0; c < row.length; c++) {
-        var v = String(row[c]).trim();
-        if (/^\d+$/.test(v)) {
-          var dn = parseInt(v, 10);
-          days.push(dn);
-          colByDay[dn] = c;
-        }
-      }
-      return { rowIndex: r, days: days, colByDay: colByDay };
+  // Fixed layout: Day header row is row 4 (0-based index 3). Days are in A,C,E,... (step=2).
+  var r = 3;
+  if (!values || values.length <= r) throw new Error('Sheet too short: expected day header at row 4');
+  var row = values[r] || [];
+
+  var colByDay = {};
+  var days = [];
+
+  for (var c = 0; c < row.length; c += 2) {
+    var v = String(row[c] || '').trim();
+    if (/^\d+$/.test(v)) {
+      var dn = parseInt(v, 10);
+      days.push(dn);
+      colByDay[dn] = c;
     }
   }
-  throw new Error('Day header row not found (row starting with 11)');
+
+  if (!days.length) throw new Error('Day header row found but contained no day numbers (expected 11,12,13,...)');
+  return { rowIndex: r, days: days, colByDay: colByDay };
 }
 
+
 function _extractEmployees(values) {
+  // Fixed layout:
+  // Row 5 (0-based 4) is first employee header, row 6 (0-based 5) is first employee punches.
+  // Employees repeat every 2 rows: header row N, punch row N+1.
+  // EmployeeID = column B (index 1), Name = column I (index 8), Dept = column U (index 20).
   var out = [];
-  for (var i = 0; i < values.length; i++) {
-    var r = values[i];
-    if (!r || !r.length) continue;
-    if (String(r[0]).indexOf('ID:') === 0) {
-      // name typically at col 10
-      var name = (r.length > 10) ? String(r[10]).trim() : '';
-      var next = (i + 1 < values.length) ? values[i + 1] : [];
-      var punchRow = (next && next.length && String(next[0]).indexOf('ID:') !== 0) ? next : [];
-      if (name) out.push({ name: name, punchRow: punchRow });
-    }
+  if (!values || values.length < 6) return out;
+
+  for (var r = 4; r < values.length; r += 2) {
+    var headerRow = values[r] || [];
+    var punchRow = (r + 1 < values.length) ? (values[r + 1] || []) : [];
+
+    var name = String(headerRow[8] || '').trim();
+    var empId = String(headerRow[1] || '').trim();
+    var dept = String(headerRow[20] || '').trim();
+
+    // Stop when we hit an empty block
+    if (!name && !empId) continue;
+
+    out.push({ name: name || empId || ('EMP_' + r), employeeId: empId, dept: dept, punchRow: punchRow });
   }
+
   return out;
 }
+
 
 function _spreadsheetIdFromUrl(url) {
   var m = String(url).match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
@@ -597,4 +609,5 @@ function writePayrollMonthSheet_(ss, period, normalizedRows) {
 
   return { sheetName: payrollSh.getName(), rowCount: rows.length };
 }
+
 
