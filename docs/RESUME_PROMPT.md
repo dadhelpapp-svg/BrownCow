@@ -36,12 +36,15 @@ Known status / blockers:
 
 ## Local workspace (Windows)
 
+Single workspace root (source of truth): `C:\Users\user\BrownCow`
+
 - Repo working copy (GitHub): `C:\Users\user\BrownCow`
 - Apps Script (clasp project): `C:\Users\user\BrownCow\apps-script`
   - Key files: `.clasp.json`, `appsscript.json`, `Code.gs`
-- Cloudflare Worker (repo path): `C:\Users\user\BrownCow\worker`
-- Cloudflare Worker (active deploy folder): `C:\Users\user\browncowpayrollbot`
-- Avoid / deprecated: `C:\Users\user\browncow-clasp-work` (not a clasp project; missing `.clasp.json`)
+- Cloudflare Worker (Wrangler project): `C:\Users\user\BrownCow\worker`
+- Removed (duplicate / deprecated):
+  - `C:\Users\user\browncowpayrollbot`
+  - `C:\Users\user\browncow-clasp-work`
 
 ### Telegram
 - Bot: `@BrownCow_Bot`
