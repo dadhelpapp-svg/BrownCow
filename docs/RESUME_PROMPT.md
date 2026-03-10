@@ -201,6 +201,18 @@ Hours computation (LOCKED):
 
 ## Incident log (high-signal)
 
+### 2026-03-09: Telegram webhook retry spam when Worker returns non-2xx
+Symptoms:
+- Bot repeatedly sends “Processing...” and repeats the same error message.
+- Wrangler tail shows webhook responses `status: 500`.
+
+Cause (code-level):
+- Telegram retries the same update until webhook returns a 2xx.
+- Worker returned HTTP 500 when Apps Script failed.
+
+Fix:
+- In Worker `src/index.js`, on Apps Script failure send the error to chat but still `return Response.json(...);` with HTTP 200.
+
 ### 2026-03-04: Missing Feb 11 rows in `normalized_attendance`
 Symptoms:
 - Source sheet has day-11 punches in column A (e.g., `A18`, `A20`).
