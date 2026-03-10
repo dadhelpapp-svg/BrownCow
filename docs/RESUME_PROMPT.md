@@ -34,6 +34,15 @@ Known status / blockers:
 
 ## Architecture
 
+## Local workspace (Windows)
+
+- Repo working copy (GitHub): `C:\Users\user\BrownCow`
+- Apps Script (clasp project): `C:\Users\user\BrownCow\apps-script`
+  - Key files: `.clasp.json`, `appsscript.json`, `Code.gs`
+- Cloudflare Worker (repo path): `C:\Users\user\BrownCow\worker`
+- Cloudflare Worker (active deploy folder): `C:\Users\user\browncowpayrollbot`
+- Avoid / deprecated: `C:\Users\user\browncow-clasp-work` (not a clasp project; missing `.clasp.json`)
+
 ### Telegram
 - Bot: `@BrownCow_Bot`
 - Group chat_id (allowlisted): `-5173650582`
@@ -53,7 +62,10 @@ Wrangler tail:
 ### Google Apps Script Web App
 - Project: “BrownCow Payroll Bot”
 - Current `/exec` (single source of truth):
-  - https://script.google.com/macros/s/AKfycbylciB9sHopkPyvyMhuxRgL6WO2LMiVRifEbCuQQ2SJlcH6-UihUR9Wdk8tK6Gm_1YG/exec
+  - https://script.google.com/macros/s/AKfycbyDfK5s3OrFW6OnqSZ7-ZfhE-drEEmZ4MWGaHD0wWjTZsRvQa7D8WlS6V-yrWRYYVhV/exec
+
+Rollback (previous /exec):
+- https://script.google.com/macros/s/AKfycbylciB9sHopkPyvyMhuxRgL6WO2LMiVRifEbCuQQ2SJlcH6-UihUR9Wdk8tK6Gm_1YG/exec
 
 Purpose:
 - Read attendance sheet (`Att.log report`)
@@ -118,7 +130,7 @@ Set with `wrangler secret put ...`:
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_SECRET` = `browncow_payroll_telegram_secret`
 - `ALLOWED_CHAT_IDS` = `-5173650582`
-- `APPS_SCRIPT_EXEC_URL` = `https://script.google.com/macros/s/AKfycbylciB9sHopkPyvyMhuxRgL6WO2LMiVRifEbCuQQ2SJlcH6-UihUR9Wdk8tK6Gm_1YG/exec`
+- `APPS_SCRIPT_EXEC_URL` = `https://script.google.com/macros/s/AKfycbyDfK5s3OrFW6OnqSZ7-ZfhE-drEEmZ4MWGaHD0wWjTZsRvQa7D8WlS6V-yrWRYYVhV/exec`
 - `PAYROLL_TEMPLATE_SPREADSHEET_ID` = `1szqCW-bR1VfIgoACJW27OQTecjHj4sFYyhxce8xYIsA`
 
 ---
@@ -130,10 +142,20 @@ Set with `wrangler secret put ...`:
 - Tail logs: `wrangler tail browncowpayrollbot --format json`
 
 ### Apps Script (PowerShell)
+
+Deploy code (clasp):
+- `cd C:\Users\user\BrownCow\apps-script`
+- `clasp push`
+- `clasp deploy -d "..."`
+
+List deployments (to confirm current /exec):
+- `cd C:\Users\user\BrownCow\apps-script`
+- `clasp deployments`
+
 Authorize smoke test (Drive consent warmup):
 - POST `/exec` body: `{ "action": "authorize" }`
 - PowerShell:
-  - `$exec = "https://script.google.com/macros/s/AKfycbylciB9sHopkPyvyMhuxRgL6WO2LMiVRifEbCuQQ2SJlcH6-UihUR9Wdk8tK6Gm_1YG/exec"`
+  - `$exec = "https://script.google.com/macros/s/AKfycbyDfK5s3OrFW6OnqSZ7-ZfhE-drEEmZ4MWGaHD0wWjTZsRvQa7D8WlS6V-yrWRYYVhV/exec"`
   - `Invoke-RestMethod -Method Post -Uri $exec -ContentType "application/json" -Body '{"action":"authorize"}'`
 
 Create a new payroll file (copy template + write normalized_attendance):
@@ -143,7 +165,7 @@ Create a new payroll file (copy template + write normalized_attendance):
   - optional: `outputFileName`
 
 PowerShell:
-- `$exec = "https://script.google.com/macros/s/AKfycbylciB9sHopkPyvyMhuxRgL6WO2LMiVRifEbCuQQ2SJlcH6-UihUR9Wdk8tK6Gm_1YG/exec"`
+- `$exec = "https://script.google.com/macros/s/AKfycbyDfK5s3OrFW6OnqSZ7-ZfhE-drEEmZ4MWGaHD0wWjTZsRvQa7D8WlS6V-yrWRYYVhV/exec"`
 - `$body = @{ attendanceSheetUrl = "https://docs.google.com/spreadsheets/d/1qSFdNVqtBTat1PzMEkgiPKvvh3BiEdXq1RJurOLg74E/edit?gid=1112430549"; payrollTemplateSpreadsheetId = "1szqCW-bR1VfIgoACJW27OQTecjHj4sFYyhxce8xYIsA"; outputFileName = "BrownCow Payroll - SmokeTest" } | ConvertTo-Json -Depth 10`
 - `Invoke-RestMethod -Method Post -Uri $exec -ContentType "application/json" -Body $body`
 
