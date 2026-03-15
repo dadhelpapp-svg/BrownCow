@@ -111,8 +111,8 @@ Cell content format:
 
 ### Payroll template (format-only; copied each run)
 - Name: `BrownCow Payroll - Template`
-- Template Spreadsheet ID: `1szqCW-bR1VfIgoACJW27OQTecjHj4sFYyhxce8xYIsA`
-- URL: https://docs.google.com/spreadsheets/d/1szqCW-bR1VfIgoACJW27OQTecjHj4sFYyhxce8xYIsA/edit
+- Template Spreadsheet ID: `1Na5SEdMiRmp9er-4622TKBsAjqPY1oZJZ6l522ebzgc`
+- URL: https://docs.google.com/spreadsheets/d/1Na5SEdMiRmp9er-4622TKBsAjqPY1oZJZ6l522ebzgc/edit
 
 Template requirements:
 - `time_keeping` tab exists
@@ -133,7 +133,7 @@ Set with `wrangler secret put ...`:
 - `TELEGRAM_SECRET` = `browncow_payroll_telegram_secret`
 - `ALLOWED_CHAT_IDS` = `-5173650582`
 - `APPS_SCRIPT_EXEC_URL` = `https://script.google.com/macros/s/AKfycbwKi0V2U1rRAGmNovsQgaoJhROXMnfPWYBMu4KB2pQlFtmA4OPM5PU8XMZNsDwqQscf/exec`
-- `PAYROLL_TEMPLATE_SPREADSHEET_ID` = `1szqCW-bR1VfIgoACJW27OQTecjHj4sFYyhxce8xYIsA`
+- `PAYROLL_TEMPLATE_SPREADSHEET_ID` = `1Na5SEdMiRmp9er-4622TKBsAjqPY1oZJZ6l522ebzgc`
 
 ---
 
@@ -168,7 +168,7 @@ Create a new payroll file (copy template + write normalized_attendance):
 
 PowerShell:
 - `$exec = "https://script.google.com/macros/s/AKfycbwKi0V2U1rRAGmNovsQgaoJhROXMnfPWYBMu4KB2pQlFtmA4OPM5PU8XMZNsDwqQscf/exec"`
-- `$body = @{ attendanceSheetUrl = "https://docs.google.com/spreadsheets/d/1qSFdNVqtBTat1PzMEkgiPKvvh3BiEdXq1RJurOLg74E/edit?gid=1112430549"; payrollTemplateSpreadsheetId = "1szqCW-bR1VfIgoACJW27OQTecjHj4sFYyhxce8xYIsA"; outputFileName = "BrownCow Payroll - SmokeTest" } | ConvertTo-Json -Depth 10`
+- `$body = @{ attendanceSheetUrl = "https://docs.google.com/spreadsheets/d/1qSFdNVqtBTat1PzMEkgiPKvvh3BiEdXq1RJurOLg74E/edit?gid=1112430549"; payrollTemplateSpreadsheetId = "1Na5SEdMiRmp9er-4622TKBsAjqPY1oZJZ6l522ebzgc"; outputFileName = "BrownCow Payroll - SmokeTest" } | ConvertTo-Json -Depth 10`
 - `Invoke-RestMethod -Method Post -Uri $exec -ContentType "application/json" -Body $body`
 
 ---
