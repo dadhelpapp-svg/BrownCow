@@ -76,7 +76,7 @@ Wrangler tail:
 ### Google Apps Script Web App
 - Project: “BrownCow Payroll Bot”
 - Current `/exec` (single source of truth):
-  - https://script.google.com/macros/s/AKfycbzrz0wajmhAU0IEEv0n0HtT9Ci0gsN-0rYAPHeuP97zQ5OnMwlOzltOARb0W2aJNFw/exec
+  - https://script.google.com/macros/s/AKfycbwKi0V2U1rRAGmNovsQgaoJhROXMnfPWYBMu4KB2pQlFtmA4OPM5PU8XMZNsDwqQscf/exec
   - Note: A library deployment (e.g., “v49”) is **not** the Web App and will not provide a working `/exec` URL.
 
 Rollback (previous /exec):
@@ -106,9 +106,7 @@ Drive dependency:
 This is a fingerprint machine export and **cannot be changed**. The bot must parse it as-is.
 
 - Period string is on row 3 and looks like: `YYYY-MM-DD ~ YYYY-MM-DD`.
-- Day header row is **contiguous** (no spacer columns) and begins at:
-  - `A4:P4` = day numbers `11..26` (example run)
-  - **Day columns start at A** (column A is day 11).
+- Day header row is **contiguous** (no spacer columns).
 
 Employee block detection:
 - Employee header rows have `A = "ID:"`.
@@ -145,7 +143,7 @@ Set with `wrangler secret put ...`:
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_SECRET` = `browncow_payroll_telegram_secret`
 - `ALLOWED_CHAT_IDS` = `-5173650582`
-- `APPS_SCRIPT_EXEC_URL` = `https://script.google.com/macros/s/AKfycbzrz0wajmhAU0IEEv0n0HtT9Ci0gsN-0rYAPHeuP97zQ5OnMwlOzltOARb0W2aJNFw/exec`
+- `APPS_SCRIPT_EXEC_URL` = `https://script.google.com/macros/s/AKfycbwKi0V2U1rRAGmNovsQgaoJhROXMnfPWYBMu4KB2pQlFtmA4OPM5PU8XMZNsDwqQscf/exec`
 - `PAYROLL_TEMPLATE_SPREADSHEET_ID` = `1szqCW-bR1VfIgoACJW27OQTecjHj4sFYyhxce8xYIsA`
 
 ---
@@ -170,7 +168,7 @@ List deployments (to confirm current /exec):
 Authorize smoke test (Drive consent warmup):
 - POST `/exec` body: `{ "action": "authorize" }`
 - PowerShell:
-  - `$exec = "https://script.google.com/macros/s/AKfycbzrz0wajmhAU0IEEv0n0HtT9Ci0gsN-0rYAPHeuP97zQ5OnMwlOzltOARb0W2aJNFw/exec"`
+  - `$exec = "https://script.google.com/macros/s/AKfycbwKi0V2U1rRAGmNovsQgaoJhROXMnfPWYBMu4KB2pQlFtmA4OPM5PU8XMZNsDwqQscf/exec"`
   - `Invoke-RestMethod -Method Post -Uri $exec -ContentType "application/json" -Body '{"action":"authorize"}'`
 
 Create a new payroll file (copy template + write normalized_attendance):
@@ -180,7 +178,7 @@ Create a new payroll file (copy template + write normalized_attendance):
   - optional: `outputFileName`
 
 PowerShell:
-- `$exec = "https://script.google.com/macros/s/AKfycbzrz0wajmhAU0IEEv0n0HtT9Ci0gsN-0rYAPHeuP97zQ5OnMwlOzltOARb0W2aJNFw/exec"`
+- `$exec = "https://script.google.com/macros/s/AKfycbwKi0V2U1rRAGmNovsQgaoJhROXMnfPWYBMu4KB2pQlFtmA4OPM5PU8XMZNsDwqQscf/exec"`
 - `$body = @{ attendanceSheetUrl = "https://docs.google.com/spreadsheets/d/1qSFdNVqtBTat1PzMEkgiPKvvh3BiEdXq1RJurOLg74E/edit?gid=1112430549"; payrollTemplateSpreadsheetId = "1szqCW-bR1VfIgoACJW27OQTecjHj4sFYyhxce8xYIsA"; outputFileName = "BrownCow Payroll - SmokeTest" } | ConvertTo-Json -Depth 10`
 - `Invoke-RestMethod -Method Post -Uri $exec -ContentType "application/json" -Body $body`
 
