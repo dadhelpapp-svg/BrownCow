@@ -65,7 +65,8 @@ Wrangler tail:
 ### Google Apps Script Web App
 - Project: “BrownCow Payroll Bot”
 - Current `/exec` (single source of truth):
-  - https://script.google.com/macros/s/AKfycbyDfK5s3OrFW6OnqSZ7-ZfhE-drEEmZ4MWGaHD0wWjTZsRvQa7D8WlS6V-yrWRYYVhV/exec
+  - https://script.google.com/macros/s/AKfycbzrz0wajmhAU0IEEv0n0HtT9Ci0gsN-0rYAPHeuP97zQ5OnMwlOzltOARb0W2aJNFw/exec
+  - Note: A library deployment (e.g., “v49”) is **not** the Web App and will not provide a working `/exec` URL.
 
 Rollback (previous /exec):
 - https://script.google.com/macros/s/AKfycbylciB9sHopkPyvyMhuxRgL6WO2LMiVRifEbCuQQ2SJlcH6-UihUR9Wdk8tK6Gm_1YG/exec
@@ -133,7 +134,7 @@ Set with `wrangler secret put ...`:
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_SECRET` = `browncow_payroll_telegram_secret`
 - `ALLOWED_CHAT_IDS` = `-5173650582`
-- `APPS_SCRIPT_EXEC_URL` = `https://script.google.com/macros/s/AKfycbyDfK5s3OrFW6OnqSZ7-ZfhE-drEEmZ4MWGaHD0wWjTZsRvQa7D8WlS6V-yrWRYYVhV/exec`
+- `APPS_SCRIPT_EXEC_URL` = `https://script.google.com/macros/s/AKfycbzrz0wajmhAU0IEEv0n0HtT9Ci0gsN-0rYAPHeuP97zQ5OnMwlOzltOARb0W2aJNFw/exec`
 - `PAYROLL_TEMPLATE_SPREADSHEET_ID` = `1szqCW-bR1VfIgoACJW27OQTecjHj4sFYyhxce8xYIsA`
 
 ---
@@ -158,7 +159,7 @@ List deployments (to confirm current /exec):
 Authorize smoke test (Drive consent warmup):
 - POST `/exec` body: `{ "action": "authorize" }`
 - PowerShell:
-  - `$exec = "https://script.google.com/macros/s/AKfycbyDfK5s3OrFW6OnqSZ7-ZfhE-drEEmZ4MWGaHD0wWjTZsRvQa7D8WlS6V-yrWRYYVhV/exec"`
+  - `$exec = "https://script.google.com/macros/s/AKfycbzrz0wajmhAU0IEEv0n0HtT9Ci0gsN-0rYAPHeuP97zQ5OnMwlOzltOARb0W2aJNFw/exec"`
   - `Invoke-RestMethod -Method Post -Uri $exec -ContentType "application/json" -Body '{"action":"authorize"}'`
 
 Create a new payroll file (copy template + write normalized_attendance):
@@ -168,7 +169,7 @@ Create a new payroll file (copy template + write normalized_attendance):
   - optional: `outputFileName`
 
 PowerShell:
-- `$exec = "https://script.google.com/macros/s/AKfycbyDfK5s3OrFW6OnqSZ7-ZfhE-drEEmZ4MWGaHD0wWjTZsRvQa7D8WlS6V-yrWRYYVhV/exec"`
+- `$exec = "https://script.google.com/macros/s/AKfycbzrz0wajmhAU0IEEv0n0HtT9Ci0gsN-0rYAPHeuP97zQ5OnMwlOzltOARb0W2aJNFw/exec"`
 - `$body = @{ attendanceSheetUrl = "https://docs.google.com/spreadsheets/d/1qSFdNVqtBTat1PzMEkgiPKvvh3BiEdXq1RJurOLg74E/edit?gid=1112430549"; payrollTemplateSpreadsheetId = "1szqCW-bR1VfIgoACJW27OQTecjHj4sFYyhxce8xYIsA"; outputFileName = "BrownCow Payroll - SmokeTest" } | ConvertTo-Json -Depth 10`
 - `Invoke-RestMethod -Method Post -Uri $exec -ContentType "application/json" -Body $body`
 
